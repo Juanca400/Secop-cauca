@@ -34,7 +34,14 @@
     width:100%; padding:16px; font-size:18px; font-weight:600; border:0; border-radius:12px;
     background:var(--acc); color:var(--acc-txt);
   }
-  button.principal:disabled { opacity:.6; }
+  button.principal:disabled, button.secundario:disabled { opacity:.6; }
+  button.secundario {
+    width:100%; margin-top:10px; padding:14px; font-size:16px; font-weight:600; border-radius:12px;
+    background:var(--card); color:var(--acc); border:2px solid var(--acc);
+  }
+  .nota { margin-top:6px; font-size:13px; }
+  .tag.obra { background:var(--newbg); color:var(--new); border-color:var(--new); }
+  .tag.ojo { background:var(--errbg); color:var(--err); border-color:var(--err); }
   details { background:var(--card); border:1px solid var(--line); border-radius:12px; margin:12px 0; padding:4px 14px; }
   summary { padding:10px 0; font-weight:600; cursor:pointer; }
   label { display:block; font-size:14px; color:var(--mut); margin:10px 0 4px; }
@@ -71,6 +78,8 @@
   <p class="sub">Procesos abiertos en SECOP I y SECOP II (datos abiertos de datos.gov.co)</p>
 
   <button id="buscar" class="principal">Buscar procesos</button>
+  <button id="obras" class="secundario">🏗️ Obras para empezar (mínima cuantía de obra)</button>
+  <p class="sub nota">Pone los filtros para obras pequeñas: solo mínima cuantía, palabras de obra, valor de $15 a $60 millones y sin servicios, compras ni interventorías. Luego puedes cambiarlos en Filtros.</p>
 
   <details>
     <summary>Filtros</summary>
@@ -108,7 +117,7 @@
   <div id="avisos"></div>
   <div id="lista"></div>
 
-  <p class="pie">Los datos abiertos tienen algo de retraso. En SECOP I la fecha de cierre no está en esos datos: abre el proceso para verla. Confirma siempre en el portal antes de ofertar.</p>
+  <p class="pie">La experiencia que pide cada proceso no viene en los datos abiertos: ábrelo y revisa la invitación pública antes de decidir. Los datos abiertos tienen algo de retraso. En SECOP I la fecha de cierre no está en esos datos: abre el proceso para verla. Confirma siempre en el portal antes de ofertar.</p>
 </main>
 
 <script>
@@ -126,6 +135,18 @@ const MODALIDADES = {
   "CONCURSO DE MERITOS": "Concurso de méritos",
   "REGIMEN ESPECIAL": "Régimen especial"
 };
+
+// Perfil "Obras para empezar": obra pequeña de mínima cuantía
+const OBRA_PALABRAS = ["obra", "construcción", "mejoramiento", "adecuación", "reparación", "mantenimiento",
+  "rehabilitación", "ampliación", "remodelación", "pavimentación", "placa huella", "andén", "cerramiento",
+  "cubierta", "muro", "enchape", "batería sanitaria", "pozo séptico", "alcantarillado", "acueducto",
+  "obras civiles", "infraestructura"];
+const OBRA_EXCLUIR = ["servicios profesionales", "apoyo a la gestión", "interventoría", "consultoría",
+  "adquisición", "compra de", "alquiler", "arrendamiento", "transporte escolar", "alimentación",
+  "dotación", "papelería", "vehículo", "software", "capacitación", "logística"];
+const OBRA_VMIN = 15000000, OBRA_VMAX = 60000000;
+// Obras de vías: en mínima cuantía suelen usar documento tipo, que pide experiencia
+const VIAS_PALABRAS = ["vía", "vias", "pavimentación", "placa huella", "carretera", "camino", "puente"];
 
 // ---------- utilidades ----------
 const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
@@ -279,6 +300,9 @@ function tarjeta(p, esNuevo) {
   const etiquetas = [];
   if (p.zonas.length) etiquetas.push(`<span class="tag star">⭐ ${esc(p.zonas.join(", "))}</span>`);
   if (esNuevo) etiquetas.push(`<span class="tag new">NUEVO</span>`);
+  const txt = norm(p.objeto);
+  if (OBRA_PALABRAS.some(w => txt.includes(norm(w)))) etiquetas.push(`<span class="tag obra">🏗️ Obra</span>`);
+  if (VIAS_PALABRAS.some(w => new RegExp("\\b" + reEsc(norm(w)) + "\\b").test(txt))) etiquetas.push(`<span class="tag ojo">Vías: revisa la experiencia que piden</span>`);
   etiquetas.push(`<span class="tag">${esc(p.fuente)}</span>`);
   etiquetas.push(`<span class="tag">${esc(p.modalidad || "")}</span>`);
   const cierre = p.cierre != null ? `<b>${esc(fmtF(p.cierre))}</b>` : "ver en el enlace";
@@ -302,6 +326,7 @@ async function buscar() {
   if (!f.s1 && !f.s2) { $("estado").textContent = "Marca al menos una fuente (SECOP I o II) en Filtros."; return; }
 
   $("buscar").disabled = true;
+  $("obras").disabled = true;
   $("estado").textContent = "Buscando en datos.gov.co…";
 
   const tareas = [];
@@ -346,6 +371,16 @@ async function buscar() {
     $("estado").textContent = "No se pudo obtener información. Revisa tu conexión e intenta de nuevo.";
   }
   $("buscar").disabled = false;
+  $("obras").disabled = false;
+}
+
+function perfilObras() {
+  document.querySelectorAll("#modalidades input").forEach(i => i.checked = (i.value === "MINIMA CUANTIA"));
+  $("incluir").value = OBRA_PALABRAS.join(", ");
+  $("excluir").value = OBRA_EXCLUIR.join(", ");
+  $("vmin").value = OBRA_VMIN;
+  $("vmax").value = OBRA_VMAX;
+  buscar();
 }
 
 function iniciar() {
@@ -353,6 +388,7 @@ function iniciar() {
     `<div class="chk"><input type="checkbox" value="${k}" ${k === "MINIMA CUANTIA" ? "checked" : ""}><span>${v}</span></div>`).join("");
   cargarFiltros();
   $("buscar").addEventListener("click", buscar);
+  $("obras").addEventListener("click", perfilObras);
 }
 
 if (typeof document !== "undefined") iniciar();
